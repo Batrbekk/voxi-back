@@ -1,0 +1,75 @@
+name: Deploy Backend to VM
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to VM
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          # Copy dist folder to VM
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
+            ./dist/ \
+            $SSH_USER@$SSH_HOST:~/voxi-back/dist/
+
+          # Copy package files
+          scp -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            package.json package-lock.json \
+            $SSH_USER@$SSH_HOST:~/voxi-back/
+
+          # Install production dependencies and restart
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            $SSH_USER@$SSH_HOST << 'EOF'
+            cd ~/voxi-back
+            npm ci --only=production
+            pm2 restart voxi-backend
+            pm2 save
+          EOF
+
+      - name: Verify deployment
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            $SSH_USER@$SSH_HOST \
+            'pm2 status'
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

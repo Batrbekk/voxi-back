@@ -57,3 +57,7 @@ credentials/
 # Google Cloud SDK
 google-cloud-sdk/
 *.tar.gz
+
+# SSH Keys
+github-actions-key
+github-actions-key.pub
