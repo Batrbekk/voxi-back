@@ -245,4 +245,88 @@ export class EmailService {
       throw error;
     }
   }
+
+  async sendManagerInvitation(email: string, name: string, temporaryPassword: string) {
+    const loginUrl = `${this.frontendUrl}/login`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+          .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
+          .credentials { background: #fff; border: 2px solid #667eea; border-radius: 5px; padding: 20px; margin: 20px 0; }
+          .credentials-item { margin: 10px 0; }
+          .credentials-label { font-weight: bold; color: #667eea; }
+          .credentials-value { font-family: monospace; background: #f0f0f0; padding: 5px 10px; border-radius: 3px; display: inline-block; margin-left: 10px; }
+          .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Приглашение в команду Voxi</h1>
+          </div>
+          <div class="content">
+            <p>Здравствуйте, ${name}!</p>
+            <p>Вы были приглашены в качестве менеджера в систему Voxi. Теперь у вас есть доступ к CRM системе для управления лидами и звонками.</p>
+
+            <div class="credentials">
+              <h3 style="margin-top: 0; color: #667eea;">Ваши учетные данные:</h3>
+              <div class="credentials-item">
+                <span class="credentials-label">Email:</span>
+                <span class="credentials-value">${email}</span>
+              </div>
+              <div class="credentials-item">
+                <span class="credentials-label">Временный пароль:</span>
+                <span class="credentials-value">${temporaryPassword}</span>
+              </div>
+            </div>
+
+            <div class="warning">
+              <strong>Важно!</strong> При первом входе вы будете обязаны сменить временный пароль на свой собственный.
+            </div>
+
+            <div style="text-align: center;">
+              <a href="${loginUrl}" class="button">Войти в систему</a>
+            </div>
+
+            <p><strong>Что вы можете делать как менеджер:</strong></p>
+            <ul>
+              <li>Просматривать и управлять лидами</li>
+              <li>Совершать звонки через веб-приложение</li>
+              <li>Просматривать историю разговоров и транскрипции</li>
+              <li>Получать AI-анализ разговоров</li>
+              <li>Отслеживать статистику и производительность</li>
+            </ul>
+
+            <p>Если у вас есть вопросы, обратитесь к администратору вашей компании или напишите нам на info@voxi.kz</p>
+          </div>
+          <div class="footer">
+            <p>&copy; 2025 Voxi. Все права защищены.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    try {
+      await this.transporter.sendMail({
+        from: this.emailFrom,
+        to: email,
+        subject: 'Приглашение в команду - Voxi',
+        html,
+      });
+      this.logger.log(`Manager invitation sent to ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send manager invitation to ${email}`, error);
+      throw error;
+    }
+  }
 }
