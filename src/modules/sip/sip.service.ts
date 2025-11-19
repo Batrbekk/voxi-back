@@ -41,12 +41,17 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
   }
 
   async onModuleInit() {
-    try {
-      await this.initializeSipConnection();
-      this.logger.log('SIP Service initialized');
-    } catch (error) {
-      this.logger.error('Failed to initialize SIP connection:', error);
-    }
+    // Don't await SIP connection to avoid blocking app startup
+    // SIP will connect in background and log errors if connection fails
+    this.initializeSipConnection()
+      .then(() => {
+        this.logger.log('SIP Service initialized and connected');
+      })
+      .catch((error) => {
+        this.logger.warn('Failed to initialize SIP connection (will retry in background):', error.message);
+      });
+
+    this.logger.log('SIP Service initialization started (non-blocking)');
   }
 
   async onModuleDestroy() {
@@ -72,6 +77,12 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
    */
   private async initializeSipConnection(): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Add timeout to prevent hanging if SIP server is unreachable
+      const connectionTimeout = setTimeout(() => {
+        this.logger.warn('SIP connection timeout after 5 seconds - continuing without SIP');
+        resolve(); // Resolve to allow app to continue
+      }, 5000);
+
       this.srf.connect({
         host: this.sipServer,
         port: this.sipPort,
@@ -79,6 +90,7 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
       });
 
       this.srf.on('connect', (err, hostport) => {
+        clearTimeout(connectionTimeout);
         if (err) {
           this.logger.error('SIP connection error:', err);
           reject(err);
