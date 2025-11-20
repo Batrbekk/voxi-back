@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Body, Logger } from '@nestjs/common';
 import { GoogleCloudService } from './google-cloud.service';
 
-@Controller('api/test/ai')
+@Controller('test/ai')
 export class GoogleCloudTestController {
   private readonly logger = new Logger(GoogleCloudTestController.name);
 
