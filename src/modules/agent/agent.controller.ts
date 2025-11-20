@@ -11,19 +11,25 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AgentService } from './agent.service';
-import { CreateAgentDto, UpdateAgentDto } from './dto';
+import { CreateAgentDto, UpdateAgentDto, PreviewVoiceDto } from './dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../schemas/user.schema';
 import { Types } from 'mongoose';
+import { GoogleCloudService } from '../google-cloud/google-cloud.service';
 
 @Controller('agents')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AgentController {
-  constructor(private readonly agentService: AgentService) {}
+  constructor(
+    private readonly agentService: AgentService,
+    private readonly googleCloudService: GoogleCloudService,
+  ) {}
 
   /**
    * Create a new agent
@@ -33,8 +39,12 @@ export class AgentController {
   @Roles(UserRole.COMPANY_ADMIN)
   @HttpCode(HttpStatus.CREATED)
   async createAgent(@Request() req, @Body() createDto: CreateAgentDto) {
-    const companyId = new Types.ObjectId(req.user.companyId);
-    const userId = new Types.ObjectId(req.user.userId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
+    const userId = Types.ObjectId.isValid(req.user.userId)
+      ? new Types.ObjectId(req.user.userId)
+      : req.user.userId;
 
     return this.agentService.createAgent(companyId, createDto, userId);
   }
@@ -50,7 +60,9 @@ export class AgentController {
     @Request() req,
     @Query('isActive') isActive?: string,
   ) {
-    const companyId = new Types.ObjectId(req.user.companyId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
 
     return this.agentService.getAgentsByCompany(
       companyId,
@@ -66,7 +78,9 @@ export class AgentController {
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.OK)
   async getAvailableAgents(@Request() req) {
-    const companyId = new Types.ObjectId(req.user.companyId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
 
     return this.agentService.getAvailableAgents(companyId);
   }
@@ -79,7 +93,9 @@ export class AgentController {
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.OK)
   async getAgentById(@Request() req, @Param('id') id: string) {
-    const companyId = new Types.ObjectId(req.user.companyId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
     const agentId = new Types.ObjectId(id);
 
     return this.agentService.getAgentById(agentId, companyId);
@@ -97,7 +113,9 @@ export class AgentController {
     @Param('id') id: string,
     @Body() updateDto: UpdateAgentDto,
   ) {
-    const companyId = new Types.ObjectId(req.user.companyId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
     const agentId = new Types.ObjectId(id);
 
     return this.agentService.updateAgent(agentId, companyId, updateDto);
@@ -111,7 +129,9 @@ export class AgentController {
   @Roles(UserRole.COMPANY_ADMIN)
   @HttpCode(HttpStatus.OK)
   async activateAgent(@Request() req, @Param('id') id: string) {
-    const companyId = new Types.ObjectId(req.user.companyId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
     const agentId = new Types.ObjectId(id);
 
     return this.agentService.toggleAgentStatus(agentId, companyId, true);
@@ -125,7 +145,9 @@ export class AgentController {
   @Roles(UserRole.COMPANY_ADMIN)
   @HttpCode(HttpStatus.OK)
   async deactivateAgent(@Request() req, @Param('id') id: string) {
-    const companyId = new Types.ObjectId(req.user.companyId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
     const agentId = new Types.ObjectId(id);
 
     return this.agentService.toggleAgentStatus(agentId, companyId, false);
@@ -139,7 +161,9 @@ export class AgentController {
   @Roles(UserRole.COMPANY_ADMIN)
   @HttpCode(HttpStatus.OK)
   async deleteAgent(@Request() req, @Param('id') id: string) {
-    const companyId = new Types.ObjectId(req.user.companyId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
     const agentId = new Types.ObjectId(id);
 
     return this.agentService.deleteAgent(agentId, companyId);
@@ -153,7 +177,9 @@ export class AgentController {
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.OK)
   async getAgentStats(@Request() req, @Param('id') id: string) {
-    const companyId = new Types.ObjectId(req.user.companyId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
     const agentId = new Types.ObjectId(id);
 
     return this.agentService.getAgentStats(agentId, companyId);
@@ -171,7 +197,9 @@ export class AgentController {
     @Param('id') id: string,
     @Body('phoneNumber') phoneNumber: string,
   ) {
-    const companyId = new Types.ObjectId(req.user.companyId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
     const agentId = new Types.ObjectId(id);
 
     return this.agentService.assignPhoneNumber(agentId, companyId, phoneNumber);
@@ -189,7 +217,9 @@ export class AgentController {
     @Param('id') id: string,
     @Param('phoneNumber') phoneNumber: string,
   ) {
-    const companyId = new Types.ObjectId(req.user.companyId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
     const agentId = new Types.ObjectId(id);
 
     return this.agentService.removePhoneNumber(agentId, companyId, phoneNumber);
@@ -203,7 +233,9 @@ export class AgentController {
   @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
   @HttpCode(HttpStatus.OK)
   async checkAvailability(@Request() req, @Param('id') id: string) {
-    const companyId = new Types.ObjectId(req.user.companyId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
     const agentId = new Types.ObjectId(id);
 
     const isAvailable = await this.agentService.isAgentAvailable(agentId, companyId);
@@ -212,5 +244,38 @@ export class AgentController {
       agentId: id,
       isAvailable,
     };
+  }
+
+  /**
+   * Preview voice with custom settings
+   * Accessible by: COMPANY_ADMIN, MANAGER
+   */
+  @Post('preview-voice')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async previewVoice(
+    @Body() previewVoiceDto: PreviewVoiceDto,
+    @Res() res: Response,
+  ) {
+    const { voiceName, speakingRate, pitch, text } = previewVoiceDto;
+
+    // Default text for preview with natural intonation
+    const previewText = text || 'Добрый день! Меня зовут Ассистент, и я буду рад вам помочь. Чем могу быть полезен сегодня?';
+
+    // Generate audio using Google Cloud TTS
+    const audioBuffer = await this.googleCloudService.synthesizeSpeech(
+      previewText,
+      voiceName,
+      'ru-RU',
+      speakingRate,
+      pitch,
+    );
+
+    // Return audio as base64
+    res.setHeader('Content-Type', 'application/json');
+    res.send({
+      audio: audioBuffer.toString('base64'),
+      contentType: 'audio/wav',
+    });
   }
 }

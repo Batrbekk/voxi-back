@@ -62,8 +62,12 @@ export class LeadController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
-    const companyId = new Types.ObjectId(req.user.companyId);
-    const userId = new Types.ObjectId(req.user.userId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
+    const userId = Types.ObjectId.isValid(req.user.userId)
+      ? new Types.ObjectId(req.user.userId)
+      : req.user.userId;
 
     // If manager, show only their leads unless they can view all
     let assignedTo: Types.ObjectId | undefined;

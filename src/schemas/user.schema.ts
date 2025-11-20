@@ -19,11 +19,11 @@ export enum UserStatus {
 
 @Schema({ timestamps: true })
 export class User {
-  @Prop({ required: true, trim: true })
-  firstName: string;
+  @Prop({ trim: true })
+  firstName?: string;
 
-  @Prop({ required: true, trim: true })
-  lastName: string;
+  @Prop({ trim: true })
+  lastName?: string;
 
   @Prop({ required: true, unique: true, trim: true, lowercase: true })
   email: string;
@@ -85,7 +85,8 @@ UserSchema.index({ status: 1 });
 
 // Virtual for full name
 UserSchema.virtual('fullName').get(function (this: UserDocument) {
-  return `${this.firstName} ${this.lastName}`;
+  const parts = [this.firstName, this.lastName].filter(Boolean);
+  return parts.length > 0 ? parts.join(' ') : this.email.split('@')[0];
 });
 
 // Ensure virtuals are included in JSON

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import pdfParse from 'pdf-parse';
+const pdfParse = require('pdf-parse');
 import * as mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import * as cheerio from 'cheerio';

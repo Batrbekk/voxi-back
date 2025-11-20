@@ -15,12 +15,12 @@ export class EmailService {
     this.emailFrom = this.configService.get<string>('EMAIL_FROM') || 'Voxi <noreply@voxi.kz>';
 
     this.transporter = nodemailer.createTransport({
-      host: this.configService.get<string>('EMAIL_HOST') || 'smtp.gmail.com',
-      port: this.configService.get<number>('EMAIL_PORT') || 587,
-      secure: this.configService.get<boolean>('EMAIL_SECURE') || false,
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false,
       auth: {
-        user: this.configService.get<string>('EMAIL_USER'),
-        pass: this.configService.get<string>('EMAIL_PASSWORD'),
+        user: 'info@voxi.kz',
+        pass: 'glnu hrpj ybcv dtdq',
       },
     });
   }

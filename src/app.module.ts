@@ -16,6 +16,7 @@ import { WebRtcModule } from './modules/webrtc/webrtc.module';
 import { PhoneModule } from './modules/phone/phone.module';
 import { BatchCallsModule } from './modules/batch-calls/batch-calls.module';
 import { KnowledgeBaseModule } from './modules/knowledge-base/knowledge-base.module';
+import { SubscriptionModule } from './modules/subscription/subscription.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { KnowledgeBaseModule } from './modules/knowledge-base/knowledge-base.mod
     PhoneModule,
     BatchCallsModule,
     KnowledgeBaseModule,
+    SubscriptionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

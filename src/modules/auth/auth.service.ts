@@ -94,7 +94,7 @@ export class AuthService {
 
     // Send verification email
     try {
-      await this.emailService.sendVerificationEmail(user.email, emailVerificationToken, user.firstName);
+      await this.emailService.sendVerificationEmail(user.email, emailVerificationToken, user.firstName || user.email.split('@')[0]);
     } catch (error) {
       this.logger.error('Failed to send verification email', error);
       // Don't throw error here, user is already created
@@ -127,7 +127,7 @@ export class AuthService {
 
     // Send welcome email
     try {
-      await this.emailService.sendWelcomeEmail(user.email, user.firstName);
+      await this.emailService.sendWelcomeEmail(user.email, user.firstName || user.email.split('@')[0]);
     } catch (error) {
       this.logger.error('Failed to send welcome email', error);
     }
@@ -208,7 +208,7 @@ export class AuthService {
 
     // Send reset email
     try {
-      await this.emailService.sendPasswordResetEmail(user.email, resetToken, user.firstName);
+      await this.emailService.sendPasswordResetEmail(user.email, resetToken, user.firstName || user.email.split('@')[0]);
       this.logger.log(`Password reset email sent to: ${user.email}`);
     } catch (error) {
       this.logger.error('Failed to send password reset email', error);
@@ -244,7 +244,7 @@ export class AuthService {
 
     // Send confirmation email
     try {
-      await this.emailService.sendPasswordChangedEmail(user.email, user.firstName);
+      await this.emailService.sendPasswordChangedEmail(user.email, user.firstName || user.email.split('@')[0]);
     } catch (error) {
       this.logger.error('Failed to send password changed email', error);
     }
@@ -285,6 +285,47 @@ export class AuthService {
     }
   }
 
+  async resendVerificationEmail(email: string) {
+    const user = await this.userModel.findOne({ email: email.toLowerCase() });
+
+    // Don't send email to non-registered users, but don't reveal if user exists
+    if (!user) {
+      this.logger.log(`Resend verification requested for non-existent email: ${email}`);
+      return {
+        message: 'Если аккаунт с таким email существует и не подтвержден, письмо было отправлено.',
+      };
+    }
+
+    if (user.isEmailVerified) {
+      throw new BadRequestException('Email уже подтвержден');
+    }
+
+    // Generate new verification token
+    const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+    const emailVerificationExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    user.emailVerificationToken = emailVerificationToken;
+    user.emailVerificationExpiry = emailVerificationExpiry;
+    await user.save();
+
+    // Send verification email
+    try {
+      await this.emailService.sendVerificationEmail(
+        user.email,
+        emailVerificationToken,
+        user.firstName || user.email.split('@')[0]
+      );
+      this.logger.log(`Verification email resent to: ${user.email}`);
+    } catch (error) {
+      this.logger.error('Failed to resend verification email', error);
+      throw error;
+    }
+
+    return {
+      message: 'Письмо с подтверждением отправлено. Проверьте вашу почту.',
+    };
+  }
+
   async logout(userId: string) {
     const user = await this.userModel.findById(userId);
     if (user) {
@@ -299,11 +340,18 @@ export class AuthService {
   }
 
   private async generateTokens(user: UserDocument) {
+    // Extract companyId - handle both populated and non-populated cases
+    const companyId = user.companyId
+      ? (typeof user.companyId === 'object' && '_id' in user.companyId
+          ? String(user.companyId._id)
+          : String(user.companyId))
+      : null;
+
     const payload = {
-      sub: user._id,
+      sub: String(user._id),
       email: user.email,
       role: user.role,
-      companyId: user.companyId,
+      companyId,
     };
 
     const [accessToken, refreshToken] = await Promise.all([

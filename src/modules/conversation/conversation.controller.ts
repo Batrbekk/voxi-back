@@ -67,7 +67,9 @@ export class ConversationController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    const companyId = new Types.ObjectId(req.user.companyId);
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
 
     return this.conversationService.getConversations(companyId, {
       status,
@@ -298,6 +300,53 @@ export class ConversationController {
       managerObjectId,
       companyId,
     );
+  }
+
+  /**
+   * Get messages for conversation
+   * Accessible by: COMPANY_ADMIN, MANAGER
+   */
+  @Get(':id/messages')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getMessages(@Request() req, @Param('id') id: string) {
+    const companyId = new Types.ObjectId(req.user.companyId);
+    const conversationId = new Types.ObjectId(id);
+
+    const conversation = await this.conversationService.getConversationById(
+      conversationId,
+      companyId,
+    );
+
+    return {
+      success: true,
+      data: conversation.transcriptSegments || [],
+    };
+  }
+
+  /**
+   * Get audio recording URL for conversation (alias for :id/audio)
+   * Accessible by: COMPANY_ADMIN, MANAGER
+   */
+  @Get(':id/recording')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getRecording(@Request() req, @Param('id') id: string) {
+    const companyId = new Types.ObjectId(req.user.companyId);
+    const conversationId = new Types.ObjectId(id);
+
+    const audioUrl = await this.conversationService.getAudioUrl(
+      conversationId,
+      companyId,
+    );
+
+    return {
+      success: true,
+      data: {
+        recordingUrl: audioUrl,
+        audioUrl,
+      },
+    };
   }
 
   /**

@@ -17,6 +17,7 @@ import {
   ResetPasswordDto,
   VerifyEmailDto,
   RefreshTokenDto,
+  ResendVerificationDto,
 } from './dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
@@ -40,6 +41,12 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async verifyEmailGet(@Query('token') token: string) {
     return this.authService.verifyEmail(token);
+  }
+
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  async resendVerification(@Body() resendVerificationDto: ResendVerificationDto) {
+    return this.authService.resendVerificationEmail(resendVerificationDto.email);
   }
 
   @Post('login')

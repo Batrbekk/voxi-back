@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SpeechClient } from '@google-cloud/speech';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import { VertexAI } from '@google-cloud/vertexai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Storage } from '@google-cloud/storage';
 import { Readable } from 'stream';
 import { SentimentType } from '../../schemas/conversation.schema';
@@ -14,6 +15,7 @@ export class GoogleCloudService {
   private speechClient: SpeechClient;
   private ttsClient: TextToSpeechClient;
   private vertexAI: VertexAI;
+  private genAI: GoogleGenerativeAI;
   private storage: Storage;
   private bucketName: string;
   private projectId: string;
@@ -34,6 +36,13 @@ export class GoogleCloudService {
       project: this.projectId,
       location: this.location,
     });
+
+    // Initialize Google Generative AI (fallback to Vertex AI if no API key)
+    const geminiApiKey = this.configService.get<string>('GEMINI_API_KEY');
+    if (geminiApiKey) {
+      this.genAI = new GoogleGenerativeAI(geminiApiKey);
+      this.logger.log('Google Generative AI initialized with API key');
+    }
 
     this.storage = new Storage({ credentials });
     const bucketName = this.configService.get<string>('GCS_BUCKET_NAME');
@@ -183,28 +192,66 @@ export class GoogleCloudService {
   async generateAIResponse(
     prompt: string,
     systemPrompt?: string,
-    modelName: string = 'gemini-1.5-flash-002',
+    modelName: string = 'gemini-2.0-flash-exp',
     temperature: number = 0.7,
     maxTokens: number = 1024,
   ): Promise<string> {
-    const generativeModel = this.vertexAI.getGenerativeModel({
-      model: modelName,
-      generationConfig: {
-        temperature,
-        maxOutputTokens: maxTokens,
-      },
-      systemInstruction: systemPrompt || undefined,
-    });
+    // Try Vertex AI first (more reliable for production)
+    try {
+      const generativeModel = this.vertexAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          temperature,
+          maxOutputTokens: maxTokens,
+        },
+        systemInstruction: systemPrompt || undefined,
+      });
 
-    const result = await generativeModel.generateContent(prompt);
-    const response = result.response;
+      const result = await generativeModel.generateContent(prompt);
+      const response = result.response;
 
-    if (!response.candidates || response.candidates.length === 0) {
-      throw new Error('No response from Vertex AI');
+      if (!response.candidates || response.candidates.length === 0) {
+        throw new Error('No response from Vertex AI');
+      }
+
+      const text = response.candidates[0].content.parts[0].text || '';
+      return text;
+    } catch (vertexError) {
+      // Fallback to Google AI if Vertex AI fails
+      if (this.genAI) {
+        this.logger.warn(`Vertex AI failed, trying Google AI: ${vertexError.message}`);
+        try {
+          // Map Vertex AI model names to Google AI model names
+          let googleAIModelName = modelName;
+          if (modelName === 'gemini-pro' || modelName === 'gemini-1.5-pro') {
+            googleAIModelName = 'gemini-2.5-pro';
+          } else if (modelName === 'gemini-1.5-flash' || modelName === 'gemini-1.5-flash-002') {
+            googleAIModelName = 'gemini-2.5-flash';
+          } else if (modelName === 'gemini-2.0-flash-exp' || modelName === 'gemini-2.0-flash') {
+            googleAIModelName = 'gemini-2.0-flash';
+          }
+
+          this.logger.log(`Using Google AI model: ${googleAIModelName}`);
+
+          const model = this.genAI.getGenerativeModel({
+            model: googleAIModelName,
+            generationConfig: {
+              temperature,
+              maxOutputTokens: maxTokens,
+            },
+            systemInstruction: systemPrompt || undefined,
+          });
+
+          const result = await model.generateContent(prompt);
+          const response = result.response;
+          return response.text();
+        } catch (googleAIError) {
+          this.logger.error(`Both Vertex AI and Google AI failed`);
+          throw new Error(`AI generation failed: Vertex AI - ${vertexError.message}, Google AI - ${googleAIError.message}`);
+        }
+      }
+      throw vertexError;
     }
-
-    const text = response.candidates[0].content.parts[0].text || '';
-    return text;
   }
 
   /**

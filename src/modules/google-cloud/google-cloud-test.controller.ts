@@ -79,7 +79,7 @@ export class GoogleCloudTestController {
       const response = await this.googleCloudService.generateAIResponse(
         prompt,
         'Ты дружелюбный AI ассистент.',
-        'gemini-1.5-flash-002',
+        'gemini-2.0-flash-exp',
         0.7,
         256,
       );
@@ -144,24 +144,36 @@ export class GoogleCloudTestController {
 
     // Test TTS
     try {
-      await this.testTTS({ text: 'Тест голосового синтеза' });
-      results.tests['tts'] = { success: true, message: 'TTS работает' };
+      const ttsResult = await this.testTTS({ text: 'Тест голосового синтеза' });
+      if (ttsResult.success) {
+        results.tests['tts'] = { success: true, message: 'TTS работает' };
+      } else {
+        results.tests['tts'] = { success: false, error: ttsResult.error };
+      }
     } catch (error) {
       results.tests['tts'] = { success: false, error: error.message };
     }
 
     // Test Gemini
     try {
-      await this.testGemini({ prompt: 'Скажи привет' });
-      results.tests['gemini'] = { success: true, message: 'Gemini AI работает' };
+      const geminiResult = await this.testGemini({ prompt: 'Скажи привет' });
+      if (geminiResult.success) {
+        results.tests['gemini'] = { success: true, message: 'Gemini AI работает' };
+      } else {
+        results.tests['gemini'] = { success: false, error: geminiResult.error };
+      }
     } catch (error) {
       results.tests['gemini'] = { success: false, error: error.message };
     }
 
     // Test Storage
     try {
-      await this.testStorage();
-      results.tests['storage'] = { success: true, message: 'Cloud Storage работает' };
+      const storageResult = await this.testStorage();
+      if (storageResult.success) {
+        results.tests['storage'] = { success: true, message: 'Cloud Storage работает' };
+      } else {
+        results.tests['storage'] = { success: false, error: storageResult.error };
+      }
     } catch (error) {
       results.tests['storage'] = { success: false, error: error.message };
     }

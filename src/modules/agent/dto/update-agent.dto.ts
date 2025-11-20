@@ -38,7 +38,11 @@ export class UpdateAgentDto {
 
   @IsString()
   @IsOptional()
-  greetingMessage?: string;
+  inboundGreetingMessage?: string;
+
+  @IsString()
+  @IsOptional()
+  outboundGreetingMessage?: string;
 
   @IsString()
   @IsOptional()

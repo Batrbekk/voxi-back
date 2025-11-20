@@ -65,7 +65,41 @@ export class PhoneController {
   }
 
   /**
-   * Delete a phone number
+   * Claim (take ownership of) an available phone number
+   */
+  @Post('numbers/:id/claim')
+  async claimNumber(@Request() req, @Param('id') id: string) {
+    const phoneNumber = await this.phoneService.claimNumber(
+      req.user.companyId,
+      id,
+    );
+
+    return {
+      success: true,
+      data: phoneNumber,
+      message: 'Номер успешно добавлен',
+    };
+  }
+
+  /**
+   * Release (return) an owned phone number back to available pool
+   */
+  @Post('numbers/:id/release')
+  async releaseNumber(@Request() req, @Param('id') id: string) {
+    const phoneNumber = await this.phoneService.releaseNumber(
+      req.user.companyId,
+      id,
+    );
+
+    return {
+      success: true,
+      data: phoneNumber,
+      message: 'Номер возвращен в доступные',
+    };
+  }
+
+  /**
+   * Delete a phone number (physical deletion)
    */
   @Delete('numbers/:id')
   async remove(@Request() req, @Param('id') id: string) {

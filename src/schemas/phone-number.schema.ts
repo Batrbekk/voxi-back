@@ -31,6 +31,9 @@ export class PhoneNumber {
   @Prop({ default: true })
   isActive: boolean;
 
+  @Prop({ type: String, enum: ['available', 'owned'], default: 'available' })
+  status: 'available' | 'owned';
+
   @Prop({ type: Object, required: true })
   sipConfig: SipConfig;
 

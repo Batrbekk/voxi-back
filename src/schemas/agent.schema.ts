@@ -64,7 +64,10 @@ export class Agent {
   knowledgeBaseId?: Types.ObjectId;
 
   @Prop({ trim: true })
-  greetingMessage?: string;
+  inboundGreetingMessage?: string;
+
+  @Prop({ trim: true })
+  outboundGreetingMessage?: string;
 
   @Prop({ trim: true })
   fallbackMessage?: string;

@@ -97,7 +97,51 @@ export class PhoneService {
   ): Promise<PhoneNumberDocument> {
     const phoneNumber = await this.findOne(companyId, phoneNumberId);
 
-    phoneNumber.assignedAgentId = new Types.ObjectId(assignAgentDto.agent_id);
+    phoneNumber.assignedAgentId = assignAgentDto.agentId
+      ? new Types.ObjectId(assignAgentDto.agentId)
+      : undefined;
+
+    return phoneNumber.save();
+  }
+
+  /**
+   * Claim (take ownership of) an available phone number
+   */
+  async claimNumber(
+    companyId: string,
+    phoneNumberId: string,
+  ): Promise<PhoneNumberDocument> {
+    const phoneNumber = await this.phoneNumberModel.findById(phoneNumberId);
+
+    if (!phoneNumber) {
+      throw new NotFoundException('Номер телефона не найден');
+    }
+
+    if (phoneNumber.status === 'owned') {
+      throw new BadRequestException('Этот номер уже занят');
+    }
+
+    phoneNumber.status = 'owned';
+    phoneNumber.companyId = new Types.ObjectId(companyId);
+
+    return phoneNumber.save();
+  }
+
+  /**
+   * Release (return) an owned phone number back to available pool
+   */
+  async releaseNumber(
+    companyId: string,
+    phoneNumberId: string,
+  ): Promise<PhoneNumberDocument> {
+    const phoneNumber = await this.findOne(companyId, phoneNumberId);
+
+    if (phoneNumber.status === 'available') {
+      throw new BadRequestException('Этот номер уже в доступных');
+    }
+
+    phoneNumber.status = 'available';
+    phoneNumber.assignedAgentId = undefined;
 
     return phoneNumber.save();
   }
