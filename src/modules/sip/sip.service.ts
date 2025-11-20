@@ -27,6 +27,7 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
   private sipProtocol: string;
   private sipNumber: string;
   private maxSessions: number;
+  private sipSecret: string;
 
   constructor(private configService: ConfigService) {
     super();
@@ -36,6 +37,7 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
     this.sipProtocol = this.configService.get<string>('BEELINE_SIP_PROTOCOL') || 'UDP';
     this.sipNumber = this.configService.get<string>('BEELINE_SIP_NUMBER') || '';
     this.maxSessions = parseInt(this.configService.get<string>('BEELINE_SIP_MAX_SESSIONS') || '5');
+    this.sipSecret = this.configService.get<string>('DRACHTIO_SECRET') || 'cymru';
 
     this.srf = new Srf();
   }
@@ -86,7 +88,7 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
       this.srf.connect({
         host: this.sipServer,
         port: this.sipPort,
-        secret: 'shared-secret', // Will be configured
+        secret: this.sipSecret,
       });
 
       this.srf.on('connect', (err, hostport) => {
