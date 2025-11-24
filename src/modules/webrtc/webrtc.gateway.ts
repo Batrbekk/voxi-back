@@ -61,6 +61,10 @@ export class WebRtcGateway
       this.notifyCallStatus(session.callId, 'answered');
     });
 
+    this.sipService.on('call:connected', (session) => {
+      this.handleIncomingCall(session);
+    });
+
     this.sipService.on('call:ended', (session) => {
       this.handleCallEnded(session);
     });
