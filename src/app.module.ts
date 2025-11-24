@@ -18,6 +18,7 @@ import { BatchCallsModule } from './modules/batch-calls/batch-calls.module';
 import { KnowledgeBaseModule } from './modules/knowledge-base/knowledge-base.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { AIConversationModule } from './modules/ai-conversation/ai-conversation.module';
+import { MediaModule } from './modules/media/media.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { AIConversationModule } from './modules/ai-conversation/ai-conversation.
     GoogleCloudModule,
     SipModule,
     WebRtcModule,
+    MediaModule,
     AIConversationModule,
     ManagerModule,
     LeadModule,

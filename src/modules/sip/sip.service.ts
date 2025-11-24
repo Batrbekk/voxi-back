@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import Srf from 'drachtio-srf';
 import { EventEmitter } from 'events';
+import { MediaService } from '../media/media.service';
 
 export interface CallSession {
   callId: string;
@@ -35,7 +36,10 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
   private sipNumber: string;
   private maxSessions: number;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private mediaService: MediaService,
+  ) {
     super();
 
     // Drachtio connection settings
@@ -105,7 +109,7 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
         secret: this.drachtioSecret,
       });
 
-      this.srf.on('connect', (err, hostport) => {
+      this.srf.on('connect', async (err, hostport) => {
         clearTimeout(connectionTimeout);
         if (err) {
           this.logger.error('SIP connection error:', err);
@@ -114,6 +118,18 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
         }
 
         this.logger.log(`SIP connected to ${hostport}`);
+
+        // Initialize Media Service with SRF
+        try {
+          this.mediaService.initializeMrf(this.srf);
+          this.logger.log('Media Service Mrf initialized');
+
+          // Connect to Freeswitch media server
+          await this.mediaService.connectToMediaServer();
+          this.logger.log('Media Service connected to Freeswitch');
+        } catch (error) {
+          this.logger.warn(`Failed to initialize Media Service (calls will work without media features): ${error.message}`);
+        }
 
         // Handle incoming INVITE (incoming calls)
         this.srf.invite(this.handleIncomingCall.bind(this));
