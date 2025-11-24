@@ -19,6 +19,7 @@ import { KnowledgeBaseModule } from './modules/knowledge-base/knowledge-base.mod
 import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { AIConversationModule } from './modules/ai-conversation/ai-conversation.module';
 import { MediaModule } from './modules/media/media.module';
+import { AudioStreamModule } from './modules/audio-stream/audio-stream.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { MediaModule } from './modules/media/media.module';
     SipModule,
     WebRtcModule,
     MediaModule,
+    AudioStreamModule,
     AIConversationModule,
     ManagerModule,
     LeadModule,

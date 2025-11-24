@@ -5,6 +5,7 @@ import { Agent } from '../../schemas/agent.schema';
 import { Conversation } from '../../schemas/conversation.schema';
 import { GoogleCloudService } from '../google-cloud/google-cloud.service';
 import { MediaService } from '../media/media.service';
+import { AudioStreamService } from '../audio-stream/audio-stream.service';
 import { EventEmitter } from 'events';
 
 export interface AIConversationSession {
@@ -27,8 +28,14 @@ export class AIConversationService extends EventEmitter {
     @InjectModel('Conversation') private conversationModel: Model<Conversation>,
     private googleCloudService: GoogleCloudService,
     private mediaService: MediaService,
+    private audioStreamService: AudioStreamService,
   ) {
     super();
+
+    // Listen to transcription events from AudioStreamService
+    this.audioStreamService.on('transcription', (data) => {
+      this.handleTranscription(data.callId, data.transcript, data.isFinal);
+    });
   }
 
   /**
@@ -104,6 +111,9 @@ export class AIConversationService extends EventEmitter {
       await this.mediaService.playTTS(session.callId, audioContent, 'mp3');
 
       this.logger.log(`Greeting played successfully for call ${session.callId}`);
+
+      // Start audio streaming for STT after greeting is played
+      await this.startAudioStreaming(session);
     } catch (error) {
       this.logger.error(`Failed to play greeting for call ${session.callId}:`, error);
       throw error;
@@ -225,6 +235,53 @@ export class AIConversationService extends EventEmitter {
   }
 
   /**
+   * Start audio streaming for STT
+   */
+  private async startAudioStreaming(session: AIConversationSession): Promise<void> {
+    try {
+      this.logger.log(`Starting audio streaming for call ${session.callId}`);
+
+      // Start audio stream session (creates WebSocket server endpoint)
+      const wsUrl = await this.audioStreamService.startSession(
+        session.callId,
+        session.agent.voiceSettings?.language || 'ru-RU',
+      );
+
+      // Start RTP audio fork to WebSocket
+      await this.mediaService.startAudioFork(session.callId, wsUrl);
+
+      this.logger.log(`Audio streaming started for call ${session.callId}, WebSocket: ${wsUrl}`);
+    } catch (error) {
+      this.logger.error(`Failed to start audio streaming for call ${session.callId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle transcription from AudioStreamService
+   */
+  private async handleTranscription(callId: string, transcript: string, isFinal: boolean): Promise<void> {
+    // Only process final transcriptions
+    if (!isFinal) {
+      return;
+    }
+
+    const session = this.activeSessions.get(callId);
+    if (!session || !session.isActive) {
+      return;
+    }
+
+    try {
+      this.logger.log(`Received final transcription for call ${callId}: "${transcript}"`);
+
+      // Process user message through AI
+      await this.processUserMessage(callId, transcript);
+    } catch (error) {
+      this.logger.error(`Failed to handle transcription for call ${callId}:`, error);
+    }
+  }
+
+  /**
    * End AI conversation session
    */
   async endSession(callId: string): Promise<void> {
@@ -237,6 +294,18 @@ export class AIConversationService extends EventEmitter {
       this.logger.log(`Ending AI conversation session for call ${callId}`);
 
       session.isActive = false;
+
+      // Stop audio streaming
+      if (this.audioStreamService.isSessionActive(callId)) {
+        this.audioStreamService.stopSession(callId);
+      }
+
+      // Stop audio fork
+      try {
+        await this.mediaService.stopAudioFork(callId);
+      } catch (error) {
+        this.logger.warn(`Failed to stop audio fork for call ${callId}:`, error);
+      }
 
       // Process any remaining audio buffer
       if (session.audioBuffer.length > 0) {
