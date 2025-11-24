@@ -101,8 +101,8 @@ export class AIConversationService extends EventEmitter {
       // Generate TTS audio
       const audioContent = await this.googleCloudService.synthesizeSpeech(
         message,
-        session.agent.voiceSettings?.language || 'ru-RU',
         session.agent.voiceSettings?.voiceName || 'ru-RU-Wavenet-B',
+        session.agent.voiceSettings?.language || 'ru-RU',
         session.agent.voiceSettings?.speakingRate || 1.0,
         session.agent.voiceSettings?.pitch || 0.0,
       );
@@ -162,7 +162,7 @@ export class AIConversationService extends EventEmitter {
       const aiResponse = await this.googleCloudService.generateAIResponse(
         conversationContext,
         systemPrompt,
-        session.agent.aiSettings?.model || 'gemini-1.5-flash-002',
+        session.agent.aiSettings?.model || 'gemini-2.0-flash-exp',
         session.agent.aiSettings?.temperature || 0.7,
         session.agent.aiSettings?.maxTokens || 1024,
       );
@@ -218,8 +218,8 @@ export class AIConversationService extends EventEmitter {
       // Generate TTS audio
       const audioContent = await this.googleCloudService.synthesizeSpeech(
         message,
-        session.agent.voiceSettings?.language || 'ru-RU',
         session.agent.voiceSettings?.voiceName || 'ru-RU-Wavenet-B',
+        session.agent.voiceSettings?.language || 'ru-RU',
         session.agent.voiceSettings?.speakingRate || 1.0,
         session.agent.voiceSettings?.pitch || 0.0,
       );
