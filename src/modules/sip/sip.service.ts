@@ -6,7 +6,9 @@ import { EventEmitter } from 'events';
 export interface CallSession {
   callId: string;
   direction: 'inbound' | 'outbound';
-  phoneNumber: string;
+  phoneNumber: string; // Customer's phone number (from for inbound, to for outbound)
+  from: string; // Caller number (customer for inbound, our number for outbound)
+  to: string; // Destination number (our number for inbound, customer for outbound)
   status: 'ringing' | 'ongoing' | 'completed' | 'failed';
   startedAt: Date;
   answeredAt?: Date;
@@ -139,7 +141,9 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
     const session: CallSession = {
       callId,
       direction: 'inbound',
-      phoneNumber: fromNumber,
+      phoneNumber: fromNumber, // Customer's number
+      from: fromNumber, // Customer is calling
+      to: toNumber, // Our number (agent's assigned number)
       status: 'ringing',
       startedAt: new Date(),
     };
@@ -209,7 +213,9 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
     const session: CallSession = {
       callId,
       direction: 'outbound',
-      phoneNumber: to,
+      phoneNumber: to, // Customer's number
+      from: from, // Our number (agent's assigned number)
+      to: to, // Customer's destination number
       status: 'ringing',
       startedAt: new Date(),
     };

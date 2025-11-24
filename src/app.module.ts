@@ -17,6 +17,7 @@ import { PhoneModule } from './modules/phone/phone.module';
 import { BatchCallsModule } from './modules/batch-calls/batch-calls.module';
 import { KnowledgeBaseModule } from './modules/knowledge-base/knowledge-base.module';
 import { SubscriptionModule } from './modules/subscription/subscription.module';
+import { AIConversationModule } from './modules/ai-conversation/ai-conversation.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { SubscriptionModule } from './modules/subscription/subscription.module';
     GoogleCloudModule,
     SipModule,
     WebRtcModule,
+    AIConversationModule,
     ManagerModule,
     LeadModule,
     AgentModule,

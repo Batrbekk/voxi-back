@@ -10,11 +10,15 @@ import {
 } from '@nestjs/websockets';
 import { Logger, UseGuards } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { SipService } from '../sip/sip.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { GoogleCloudService } from '../google-cloud/google-cloud.service';
+import { AIConversationService } from '../ai-conversation/ai-conversation.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CallDirection, CallerType, CallStatus } from '../../schemas/conversation.schema';
+import { Agent } from '../../schemas/agent.schema';
 
 interface CallData {
   phoneNumber: string;
@@ -51,6 +55,8 @@ export class WebRtcGateway
     private sipService: SipService,
     private conversationService: ConversationService,
     private googleCloudService: GoogleCloudService,
+    private aiConversationService: AIConversationService,
+    @InjectModel('Agent') private agentModel: Model<Agent>,
   ) {
     // Listen to SIP service events
     this.sipService.on('call:incoming', (session) => {
@@ -71,6 +77,11 @@ export class WebRtcGateway
 
     this.sipService.on('call:failed', (session) => {
       this.notifyCallStatus(session.callId, 'failed');
+    });
+
+    // Listen to AI conversation service events
+    this.aiConversationService.on('play-audio', (data) => {
+      this.handleAIAudioPlayback(data);
     });
   }
 
@@ -265,15 +276,69 @@ export class WebRtcGateway
   /**
    * Handle incoming call notification
    */
-  private handleIncomingCall(sipSession: any) {
+  private async handleIncomingCall(sipSession: any) {
     this.logger.log(`Incoming call: ${sipSession.callId} from ${sipSession.phoneNumber}`);
 
-    // Notify all connected managers about incoming call
-    this.server.emit('call:incoming', {
-      callId: sipSession.callId,
-      phoneNumber: sipSession.phoneNumber,
-      startedAt: sipSession.startedAt,
-    });
+    try {
+      // Determine the phone number to check for agent assignment
+      // For inbound calls: check 'to' (the number being called)
+      // For outbound calls: check 'from' (our number making the call)
+      const phoneToCheck = sipSession.direction === 'inbound'
+        ? sipSession.to
+        : sipSession.from;
+
+      // Find agent assigned to this phone number
+      const agent = await this.agentModel.findOne({
+        phoneNumbers: phoneToCheck,
+        isActive: true,
+      }).lean();
+
+      if (agent) {
+        this.logger.log(`Agent ${agent.name} found for phone number ${phoneToCheck}`);
+
+        // Create conversation with AI agent as caller
+        const conversation = await this.conversationService.createConversation(
+          agent.companyId,
+          {
+            callId: sipSession.callId,
+            phoneNumber: sipSession.phoneNumber,
+            direction: sipSession.direction === 'inbound' ? CallDirection.INBOUND : CallDirection.OUTBOUND,
+            callerType: CallerType.AI_AGENT,
+            agentId: agent._id.toString(),
+            startedAt: sipSession.startedAt?.toISOString() || new Date().toISOString(),
+          },
+        );
+
+        this.logger.log(`Conversation created for AI agent: ${conversation._id}`);
+
+        // Start AI conversation session
+        await this.aiConversationService.startSession(
+          sipSession.callId,
+          agent._id.toString(),
+          sipSession.direction === 'inbound' ? 'inbound' : 'outbound',
+        );
+
+        this.logger.log(`AI conversation session started for call ${sipSession.callId}`);
+      } else {
+        this.logger.log(`No agent found for phone number ${phoneToCheck}, notifying managers`);
+
+        // No agent assigned - notify managers for manual handling
+        this.server.emit('call:incoming', {
+          callId: sipSession.callId,
+          phoneNumber: sipSession.phoneNumber,
+          startedAt: sipSession.startedAt,
+        });
+      }
+    } catch (error) {
+      this.logger.error(`Failed to handle incoming call ${sipSession.callId}:`, error);
+
+      // Fallback: notify managers
+      this.server.emit('call:incoming', {
+        callId: sipSession.callId,
+        phoneNumber: sipSession.phoneNumber,
+        startedAt: sipSession.startedAt,
+      });
+    }
   }
 
   /**
@@ -281,6 +346,16 @@ export class WebRtcGateway
    */
   private async handleCallEnded(sipSession: any) {
     this.logger.log(`Call ended: ${sipSession.callId}`);
+
+    // Check if there's an active AI session and end it
+    if (this.aiConversationService.isSessionActive(sipSession.callId)) {
+      try {
+        await this.aiConversationService.endSession(sipSession.callId);
+        this.logger.log(`AI conversation session ended for call ${sipSession.callId}`);
+      } catch (error) {
+        this.logger.error(`Failed to end AI session for call ${sipSession.callId}:`, error);
+      }
+    }
 
     // Find manager session
     for (const session of this.managerSessions.values()) {
@@ -339,6 +414,26 @@ export class WebRtcGateway
         break;
       }
     }
+  }
+
+  /**
+   * Handle AI audio playback (TTS)
+   */
+  private handleAIAudioPlayback(data: { callId: string; audioContent: Buffer; message: string }) {
+    this.logger.log(`AI audio playback for call ${data.callId}: "${data.message}"`);
+
+    // TODO: Implement actual audio playback through SIP dialog
+    // This requires media server (Freeswitch/Asterisk) integration
+    // The audioContent is a Buffer containing the MP3/WAV audio from Google TTS
+
+    // For now, just log that we have the audio ready
+    this.logger.debug(`Audio buffer size: ${data.audioContent.length} bytes`);
+
+    // Future implementation:
+    // 1. Convert audio format if needed (MP3 -> ulaw/alaw for SIP)
+    // 2. Stream audio to the SIP dialog via drachtio-fsmrf
+    // 3. Wait for audio playback to complete
+    // 4. Listen for user speech input
   }
 
   /**
