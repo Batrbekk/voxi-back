@@ -51,8 +51,8 @@ export class AIConversationService extends EventEmitter {
       // Determine greeting message
       const greetingMessage =
         direction === 'inbound'
-          ? agent.inboundGreetingMessage || agent.greetingMessage || 'Здравствуйте! Чем могу помочь?'
-          : agent.outboundGreetingMessage || agent.greetingMessage || 'Здравствуйте! Меня зовут AI ассистент.';
+          ? agent.inboundGreetingMessage || 'Здравствуйте! Чем могу помочь?'
+          : agent.outboundGreetingMessage || 'Здравствуйте! Меня зовут AI ассистент.';
 
       // Initialize session
       const session: AIConversationSession = {
@@ -92,7 +92,7 @@ export class AIConversationService extends EventEmitter {
       // Generate TTS audio
       const audioContent = await this.googleCloudService.synthesizeSpeech(
         message,
-        session.agent.voiceSettings?.languageCode || 'ru-RU',
+        session.agent.voiceSettings?.language || 'ru-RU',
         session.agent.voiceSettings?.voiceName || 'ru-RU-Wavenet-B',
         session.agent.voiceSettings?.speakingRate || 1.0,
         session.agent.voiceSettings?.pitch || 0.0,
@@ -155,9 +155,9 @@ export class AIConversationService extends EventEmitter {
       const aiResponse = await this.googleCloudService.generateAIResponse(
         conversationContext,
         systemPrompt,
-        session.agent.modelName || 'gemini-1.5-flash-002',
-        session.agent.temperature || 0.7,
-        session.agent.maxTokens || 1024,
+        session.agent.aiSettings?.model || 'gemini-1.5-flash-002',
+        session.agent.aiSettings?.temperature || 0.7,
+        session.agent.aiSettings?.maxTokens || 1024,
       );
 
       // Add AI response to history
@@ -182,7 +182,7 @@ export class AIConversationService extends EventEmitter {
    * Build system prompt for AI
    */
   private buildSystemPrompt(session: AIConversationSession): string {
-    let prompt = session.agent.systemPrompt || 'Ты дружелюбный AI ассистент.';
+    let prompt = session.agent.aiSettings?.systemPrompt || 'Ты дружелюбный AI ассистент.';
 
     // Add knowledge base context if available
     if (session.agent.knowledgeBaseId) {
@@ -211,7 +211,7 @@ export class AIConversationService extends EventEmitter {
       // Generate TTS audio
       const audioContent = await this.googleCloudService.synthesizeSpeech(
         message,
-        session.agent.voiceSettings?.languageCode || 'ru-RU',
+        session.agent.voiceSettings?.language || 'ru-RU',
         session.agent.voiceSettings?.voiceName || 'ru-RU-Wavenet-B',
         session.agent.voiceSettings?.speakingRate || 1.0,
         session.agent.voiceSettings?.pitch || 0.0,
