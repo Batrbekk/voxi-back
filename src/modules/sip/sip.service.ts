@@ -21,23 +21,35 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
   private srf: Srf;
   private activeCalls: Map<string, CallSession> = new Map();
 
-  // Beeline SIP configuration
-  private sipServer: string;
-  private sipPort: number;
+  // Drachtio server configuration (local SIP controller)
+  private drachtioHost: string;
+  private drachtioPort: number;
+  private drachtioSecret: string;
+
+  // Beeline SIP Trunk configuration (for outbound calls)
+  private beelineTrunkHost: string;
+  private beelineTrunkPort: number;
   private sipProtocol: string;
   private sipNumber: string;
   private maxSessions: number;
-  private sipSecret: string;
 
   constructor(private configService: ConfigService) {
     super();
 
-    this.sipServer = this.configService.get<string>('BEELINE_SIP_SERVER') || '';
-    this.sipPort = parseInt(this.configService.get<string>('BEELINE_SIP_PORT') || '5060');
+    // Drachtio connection settings
+    this.drachtioHost = this.configService.get<string>('DRACHTIO_HOST') ||
+                        this.configService.get<string>('BEELINE_SIP_SERVER') || '127.0.0.1';
+    this.drachtioPort = parseInt(this.configService.get<string>('DRACHTIO_PORT') ||
+                        this.configService.get<string>('BEELINE_SIP_PORT') || '9022');
+    this.drachtioSecret = this.configService.get<string>('DRACHTIO_SECRET') || 'cymru';
+
+    // Beeline trunk settings
+    this.beelineTrunkHost = this.configService.get<string>('BEELINE_SIP_TRUNK_HOST') ||
+                            this.configService.get<string>('BEELINE_SIP_SERVER') || '46.227.186.229';
+    this.beelineTrunkPort = parseInt(this.configService.get<string>('BEELINE_SIP_TRUNK_PORT') || '5060');
     this.sipProtocol = this.configService.get<string>('BEELINE_SIP_PROTOCOL') || 'UDP';
     this.sipNumber = this.configService.get<string>('BEELINE_SIP_NUMBER') || '';
     this.maxSessions = parseInt(this.configService.get<string>('BEELINE_SIP_MAX_SESSIONS') || '5');
-    this.sipSecret = this.configService.get<string>('DRACHTIO_SECRET') || 'cymru';
 
     this.srf = new Srf();
   }
@@ -86,9 +98,9 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
       }, 5000);
 
       this.srf.connect({
-        host: this.sipServer,
-        port: this.sipPort,
-        secret: this.sipSecret,
+        host: this.drachtioHost,
+        port: this.drachtioPort,
+        secret: this.drachtioSecret,
       });
 
       this.srf.on('connect', (err, hostport) => {
@@ -169,19 +181,35 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
   /**
    * Make outbound call
    */
+  /**
+   * Format phone number to E164 (11 digits, no +)
+   */
+  private formatPhoneNumberE164(number: string): string {
+    // Remove all non-digits
+    let digits = number.replace(/\D/g, '');
+
+    // Ensure it's 11 digits (7 + 10)
+    if (digits.length === 10 && !digits.startsWith('7')) {
+      digits = '7' + digits; // Add country code if missing
+    }
+
+    return digits;
+  }
+
   async makeCall(
     phoneNumber: string,
     fromNumber?: string,
   ): Promise<CallSession> {
     const callId = this.generateCallId();
-    const from = fromNumber || this.sipNumber;
+    const from = this.formatPhoneNumberE164(fromNumber || this.sipNumber);
+    const to = this.formatPhoneNumberE164(phoneNumber);
 
-    this.logger.log(`Making outbound call: ${from} -> ${phoneNumber}`);
+    this.logger.log(`Making outbound call: ${from} -> ${to}`);
 
     const session: CallSession = {
       callId,
       direction: 'outbound',
-      phoneNumber,
+      phoneNumber: to,
       status: 'ringing',
       startedAt: new Date(),
     };
@@ -190,11 +218,11 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
 
     try {
       const dialog = await this.srf.createUAC(
-        `sip:${phoneNumber}@${this.sipServer}:${this.sipPort}`,
+        `sip:${to}@${this.beelineTrunkHost}:${this.beelineTrunkPort}`,
         {
           localSdp: await this.generateSDP(),
           headers: {
-            'From': `<sip:${from}@${this.sipServer}>`,
+            'From': `<sip:${from}@${this.beelineTrunkHost}>`,
             'Call-ID': callId,
           },
         },
