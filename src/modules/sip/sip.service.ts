@@ -166,36 +166,12 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
 
     this.activeCalls.set(callId, session);
 
-    // Emit event for other services
-    this.emit('call:incoming', session);
+    // Emit event for other services with req/res so they can handle the call
+    // WebRtcGateway will decide: AI agent -> Freeswitch, or Manager -> manual handling
+    this.emit('call:incoming', { session, req, res });
 
-    try {
-      // Answer the call
-      const dialog = await this.srf.createUAS(req, res, {
-        localSdp: await this.generateSDP(),
-      });
-
-      session.status = 'ongoing';
-      session.answeredAt = new Date();
-      session.sipDialog = dialog;
-
-      this.logger.log(`Call answered: ${callId}`);
-
-      // Emit event
-      this.emit('call:answered', session);
-
-      // Handle dialog events
-      dialog.on('destroy', () => {
-        this.handleCallEnd(callId, 'completed');
-      });
-
-    } catch (error) {
-      this.logger.error(`Failed to answer call ${callId}:`, error);
-      session.status = 'failed';
-      session.endedAt = new Date();
-      this.emit('call:failed', session);
-      this.activeCalls.delete(callId);
-    }
+    // Note: The call handler (WebRtcGateway) is responsible for answering the call
+    // either through MediaService.connectCaller() for AI or through manual handling
   }
 
   /**

@@ -16,6 +16,7 @@ import { SipService } from '../sip/sip.service';
 import { ConversationService } from '../conversation/conversation.service';
 import { GoogleCloudService } from '../google-cloud/google-cloud.service';
 import { AIConversationService } from '../ai-conversation/ai-conversation.service';
+import { MediaService } from '../media/media.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CallDirection, CallerType, CallStatus } from '../../schemas/conversation.schema';
 import { Agent } from '../../schemas/agent.schema';
@@ -56,11 +57,12 @@ export class WebRtcGateway
     private conversationService: ConversationService,
     private googleCloudService: GoogleCloudService,
     private aiConversationService: AIConversationService,
+    private mediaService: MediaService,
     @InjectModel('Agent') private agentModel: Model<Agent>,
   ) {
     // Listen to SIP service events
-    this.sipService.on('call:incoming', (session) => {
-      this.handleIncomingCall(session);
+    this.sipService.on('call:incoming', (data) => {
+      this.handleIncomingCall(data);
     });
 
     this.sipService.on('call:answered', (session) => {
@@ -276,7 +278,9 @@ export class WebRtcGateway
   /**
    * Handle incoming call notification
    */
-  private async handleIncomingCall(sipSession: any) {
+  private async handleIncomingCall(data: { session: any; req?: any; res?: any }) {
+    const { session: sipSession, req, res } = data;
+
     this.logger.log(`Incoming call: ${sipSession.callId} from ${sipSession.phoneNumber}`);
 
     try {
@@ -293,8 +297,17 @@ export class WebRtcGateway
         isActive: true,
       }).lean();
 
-      if (agent) {
+      if (agent && req && res) {
         this.logger.log(`Agent ${agent.name} found for phone number ${phoneToCheck}`);
+
+        // Connect call to Freeswitch media server
+        const mediaEndpoint = await this.mediaService.connectCaller(
+          sipSession.callId,
+          req,
+          res,
+        );
+
+        this.logger.log(`Call ${sipSession.callId} connected to Freeswitch, endpoint: ${mediaEndpoint.endpoint.uuid}`);
 
         // Create conversation with AI agent as caller
         const conversation = await this.conversationService.createConversation(

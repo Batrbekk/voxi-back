@@ -4,6 +4,7 @@ import { AIConversationService } from './ai-conversation.service';
 import { AgentSchema } from '../../schemas/agent.schema';
 import { ConversationSchema } from '../../schemas/conversation.schema';
 import { GoogleCloudModule } from '../google-cloud/google-cloud.module';
+import { MediaModule } from '../media/media.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { GoogleCloudModule } from '../google-cloud/google-cloud.module';
       { name: 'Conversation', schema: ConversationSchema },
     ]),
     GoogleCloudModule,
+    MediaModule,
   ],
   providers: [AIConversationService],
   exports: [AIConversationService],

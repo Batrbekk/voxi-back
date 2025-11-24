@@ -4,6 +4,7 @@ import { Model, Types } from 'mongoose';
 import { Agent } from '../../schemas/agent.schema';
 import { Conversation } from '../../schemas/conversation.schema';
 import { GoogleCloudService } from '../google-cloud/google-cloud.service';
+import { MediaService } from '../media/media.service';
 import { EventEmitter } from 'events';
 
 export interface AIConversationSession {
@@ -25,6 +26,7 @@ export class AIConversationService extends EventEmitter {
     @InjectModel('Agent') private agentModel: Model<Agent>,
     @InjectModel('Conversation') private conversationModel: Model<Conversation>,
     private googleCloudService: GoogleCloudService,
+    private mediaService: MediaService,
   ) {
     super();
   }
@@ -98,18 +100,13 @@ export class AIConversationService extends EventEmitter {
         session.agent.voiceSettings?.pitch || 0.0,
       );
 
-      // TODO: Play audio through SIP dialog
-      // This requires media server (Freeswitch/Asterisk) integration
-      this.logger.warn('Audio playback not implemented yet - requires media server');
+      // Play audio through Freeswitch media server
+      await this.mediaService.playTTS(session.callId, audioContent, 'mp3');
 
-      // Emit event for potential media server integration
-      this.emit('play-audio', {
-        callId: session.callId,
-        audioContent,
-        message,
-      });
+      this.logger.log(`Greeting played successfully for call ${session.callId}`);
     } catch (error) {
       this.logger.error(`Failed to play greeting for call ${session.callId}:`, error);
+      throw error;
     }
   }
 
@@ -217,17 +214,13 @@ export class AIConversationService extends EventEmitter {
         session.agent.voiceSettings?.pitch || 0.0,
       );
 
-      // TODO: Play audio through SIP dialog
-      this.logger.warn('Audio playback not implemented yet - requires media server');
+      // Play audio through Freeswitch media server
+      await this.mediaService.playTTS(session.callId, audioContent, 'mp3');
 
-      // Emit event for potential media server integration
-      this.emit('play-audio', {
-        callId: session.callId,
-        audioContent,
-        message,
-      });
+      this.logger.log(`AI response played successfully for call ${session.callId}`);
     } catch (error) {
       this.logger.error(`Failed to play response for call ${session.callId}:`, error);
+      throw error;
     }
   }
 

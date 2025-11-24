@@ -5,6 +5,7 @@ import { SipModule } from '../sip/sip.module';
 import { ConversationModule } from '../conversation/conversation.module';
 import { GoogleCloudModule } from '../google-cloud/google-cloud.module';
 import { AIConversationModule } from '../ai-conversation/ai-conversation.module';
+import { MediaModule } from '../media/media.module';
 import { AgentSchema } from '../../schemas/agent.schema';
 
 @Module({
@@ -14,6 +15,7 @@ import { AgentSchema } from '../../schemas/agent.schema';
     ConversationModule,
     GoogleCloudModule,
     AIConversationModule,
+    MediaModule,
   ],
   providers: [WebRtcGateway],
   exports: [WebRtcGateway],
