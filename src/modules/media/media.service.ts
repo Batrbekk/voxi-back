@@ -102,6 +102,12 @@ export class MediaService extends EventEmitter implements OnModuleInit, OnModule
       return;
     }
 
+    // Check if FreeSWITCH is disabled
+    if (this.configService.get<string>('DISABLE_FREESWITCH') === 'true') {
+      this.logger.warn('FreeSWITCH connection disabled via DISABLE_FREESWITCH flag');
+      return;
+    }
+
     if (!this.mrf) {
       throw new Error('Mrf not initialized. Call initializeMrf() first.');
     }
