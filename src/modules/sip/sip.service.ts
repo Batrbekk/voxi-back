@@ -357,9 +357,9 @@ export class SipService extends EventEmitter implements OnModuleInit, OnModuleDe
     // This is a simplified SDP - in production, you'd generate proper SDP
     // with actual RTP endpoints
     const sdp = `v=0
-o=- 0 0 IN IP4 ${this.sipServer}
+o=- 0 0 IN IP4 ${this.beelineTrunkHost}
 s=Voxi
-c=IN IP4 ${this.sipServer}
+c=IN IP4 ${this.beelineTrunkHost}
 t=0 0
 m=audio 20000 RTP/AVP 8 0 101
 a=rtpmap:8 PCMA/8000
@@ -393,8 +393,10 @@ a=sendrecv`;
     return {
       activeCalls: this.activeCalls.size,
       maxSessions: this.maxSessions,
-      sipServer: this.sipServer,
-      sipPort: this.sipPort,
+      drachtioHost: this.drachtioHost,
+      drachtioPort: this.drachtioPort,
+      beelineTrunkHost: this.beelineTrunkHost,
+      beelineTrunkPort: this.beelineTrunkPort,
       sipProtocol: this.sipProtocol,
     };
   }
