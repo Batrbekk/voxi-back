@@ -75,7 +75,7 @@ export class WebRtcGateway
     });
 
     this.sipService.on('call:connected', (session) => {
-      this.handleIncomingCall(session);
+      this.handleIncomingCall({ session });
     });
 
     this.sipService.on('call:ended', (session) => {
