@@ -171,7 +171,7 @@ export class GoogleCloudService {
         name: voiceName,
       },
       audioConfig: {
-        audioEncoding: 'LINEAR16' as const,
+        audioEncoding: 'MP3' as const,
         speakingRate,
         pitch,
       },
@@ -294,21 +294,67 @@ export class GoogleCloudService {
     keyPoints: string[];
     customerIntention: string;
     nextSteps: string[];
+    callOutcome?: string;
+    extractedCustomerData?: any;
+    dealProbability?: number;
+    conversationQuality?: number;
+    concerns?: string[];
   }> {
-    const prompt = `Проанализируй следующий разговор и предоставь:
+    const prompt = `Проанализируй следующий телефонный разговор максимально детально и предоставь:
+
 1. Краткое резюме разговора (2-3 предложения)
 2. Общий тон разговора (positive/neutral/negative)
-3. Ключевые моменты (3-5 пунктов)
-4. Намерение клиента
+3. Ключевые моменты разговора (3-5 пунктов)
+4. Намерение клиента (что именно хочет клиент)
 5. Рекомендуемые следующие шаги (2-3 пункта)
 
-Верни результат в формате JSON:
+ВАЖНО - Извлеки и структурируй следующую информацию:
+
+6. Итог звонка (callOutcome):
+   - agreed_to_buy - клиент согласился купить/оформить
+   - rejected - клиент отказался
+   - needs_followup - нужен повторный звонок
+   - thinking - клиент думает, не решил
+   - not_interested - не заинтересован
+   - information_provided - просто предоставлена информация
+   - other - другое
+
+7. Извлечённые данные клиента (extractedCustomerData):
+   - name: имя клиента (если назвал)
+   - email: email (если назвал)
+   - phone: телефон (если назвал дополнительный)
+   - budget: бюджет или ценовой диапазон
+   - preferences: предпочтения клиента (массив строк)
+   - specialRequirements: особые требования
+   - bestTimeToCall: лучшее время для связи
+   - additionalInfo: любая другая важная информация (объект)
+
+8. Оценки:
+   - dealProbability: вероятность сделки (0-100)
+   - conversationQuality: качество разговора (0-10)
+   - concerns: возражения или опасения клиента (массив строк)
+
+Верни результат СТРОГО в формате JSON:
 {
-  "summary": "...",
+  "summary": "краткое резюме",
   "sentiment": "positive|neutral|negative",
-  "keyPoints": ["...", "...", "..."],
-  "customerIntention": "...",
-  "nextSteps": ["...", "..."]
+  "keyPoints": ["пункт1", "пункт2", "пункт3"],
+  "customerIntention": "намерение клиента",
+  "nextSteps": ["шаг1", "шаг2"],
+  "callOutcome": "agreed_to_buy|rejected|needs_followup|thinking|not_interested|information_provided|other",
+  "extractedCustomerData": {
+    "name": "Имя или null",
+    "email": "email или null",
+    "phone": "телефон или null",
+    "budget": "бюджет или null",
+    "preferences": ["предпочтение1", "предпочтение2"] или [],
+    "specialRequirements": "требования или null",
+    "bestTimeToCall": "время или null",
+    "additionalInfo": {}
+  },
+  "dealProbability": 85,
+  "conversationQuality": 8,
+  "concerns": ["возражение1", "возражение2"] или []
 }
 
 Разговор:
@@ -316,8 +362,8 @@ ${transcript}`;
 
     const response = await this.generateAIResponse(
       prompt,
-      'Ты опытный аналитик разговоров. Твоя задача - анализировать телефонные разговоры и предоставлять структурированные инсайты.',
-      'gemini-1.5-flash-002',
+      'Ты опытный аналитик телефонных продаж и разговоров. Твоя задача - детально анализировать разговоры, извлекать важную информацию о клиенте, оценивать вероятность сделки и качество разговора. Будь максимально точным и структурированным.',
+      'gemini-2.0-flash-exp',
       0.3,
     );
 

@@ -12,39 +12,33 @@ import {
   IsArray,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { AgentLanguage, AgentGender } from '../../../schemas/agent.schema';
+import { AgentLanguage, GeminiLiveVoice } from '../../../schemas/agent.schema';
 
 export class VoiceSettingsDto {
-  @IsString()
+  @IsEnum(GeminiLiveVoice)
   @IsNotEmpty()
-  voiceName: string;
+  voiceName: GeminiLiveVoice;
 
   @IsEnum(AgentLanguage)
   language: AgentLanguage;
 
-  @IsEnum(AgentGender)
-  gender: AgentGender;
+  @IsNumber()
+  @Min(0.5)
+  @Max(2.0)
+  @IsOptional()
+  speakingRate?: number;
 
   @IsNumber()
-  @Min(0.25)
-  @Max(4.0)
-  speakingRate: number;
-
-  @IsNumber()
-  @Min(-20.0)
-  @Max(20.0)
-  pitch: number;
-
-  @IsNumber()
-  @Min(-96.0)
-  @Max(16.0)
-  volumeGainDb: number;
+  @Min(-10.0)
+  @Max(10.0)
+  @IsOptional()
+  pitch?: number;
 }
 
 export class AISettingsDto {
   @IsString()
   @IsNotEmpty()
-  model: string;
+  model: string; // gemini-2.0-flash-exp for Gemini Live
 
   @IsString()
   @IsNotEmpty()
@@ -55,12 +49,10 @@ export class AISettingsDto {
   @Max(1)
   temperature: number;
 
-  @IsNumber()
-  @Min(1)
-  maxTokens: number;
-
-  @IsBoolean()
-  integratedWithAi: boolean;
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  responseModalities?: ('AUDIO' | 'TEXT')[];
 }
 
 export class WorkingHoursDto {

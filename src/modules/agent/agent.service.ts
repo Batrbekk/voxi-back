@@ -8,7 +8,10 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Agent, AgentDocument } from '../../schemas/agent.schema';
+import { Conversation } from '../../schemas/conversation.schema';
+import { PhoneNumber } from '../../schemas/phone-number.schema';
 import { CreateAgentDto, UpdateAgentDto } from './dto';
+import { GoogleCloudService } from '../google-cloud/google-cloud.service';
 
 @Injectable()
 export class AgentService {
@@ -16,7 +19,30 @@ export class AgentService {
 
   constructor(
     @InjectModel(Agent.name) private agentModel: Model<AgentDocument>,
+    @InjectModel('Conversation') private conversationModel: Model<Conversation>,
+    @InjectModel('PhoneNumber') private phoneNumberModel: Model<PhoneNumber>,
+    private googleCloudService: GoogleCloudService,
   ) {}
+
+  /**
+   * Get available Gemini Live voices
+   */
+  async getAvailableVoices() {
+    const { GEMINI_LIVE_VOICES } = require('../../config/gemini-live-voices');
+    return {
+      voices: GEMINI_LIVE_VOICES,
+      languages: [
+        { code: 'ru', name: 'Russian' },
+        { code: 'en', name: 'English' },
+        { code: 'kz', name: 'Kazakh' },
+      ],
+      defaultVoices: {
+        ru: 'Aoede',
+        en: 'Puck',
+        kz: 'Aoede',
+      },
+    };
+  }
 
   /**
    * Create a new agent
@@ -174,15 +200,40 @@ export class AgentService {
       throw new NotFoundException('Agent not found');
     }
 
-    // Check if agent has active calls (in real implementation)
-    // For now, just delete
+    // Check if agent has active calls
+    const activeCallsCount = await this.conversationModel.countDocuments({
+      agentId,
+      status: { $in: ['ringing', 'ongoing'] },
+    });
 
+    if (activeCallsCount > 0) {
+      throw new BadRequestException(
+        `Cannot delete agent with ${activeCallsCount} active call(s). Please wait for calls to end.`,
+      );
+    }
+
+    // Clean up phone number assignments
+    // Set assignedAgentId to null and status to 'available' for all phone numbers assigned to this agent
+    const phoneNumbersUpdated = await this.phoneNumberModel.updateMany(
+      { assignedAgentId: agentId },
+      {
+        $unset: { assignedAgentId: '' },
+        $set: { status: 'available' },
+      },
+    );
+
+    this.logger.log(
+      `Released ${phoneNumbersUpdated.modifiedCount} phone number(s) from agent ${agentId}`,
+    );
+
+    // Delete the agent
     await this.agentModel.deleteOne({ _id: agentId });
 
     this.logger.log(`Agent deleted: ${agentId}`);
 
     return {
       message: 'Agent deleted successfully',
+      phoneNumbersReleased: phoneNumbersUpdated.modifiedCount,
     };
   }
 
@@ -367,5 +418,61 @@ export class AgentService {
     }
 
     return availableAgents;
+  }
+
+  /**
+   * Save test conversation
+   */
+  async saveTestConversation(
+    agentId: Types.ObjectId,
+    companyId: Types.ObjectId,
+    userId: Types.ObjectId,
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+  ) {
+    // Get agent
+    const agent = await this.getAgentById(agentId, companyId);
+
+    // Build transcript
+    const transcript = conversationHistory
+      .map((msg) => `${msg.role === 'user' ? 'Пользователь' : 'Ассистент'}: ${msg.content}`)
+      .join('\n\n');
+
+    // Analyze conversation using Gemini AI
+    let aiAnalysis: any = null;
+    try {
+      if (transcript && transcript.trim().length > 50) {
+        this.logger.log(`Analyzing test conversation for agent ${agentId}`);
+        aiAnalysis = await this.googleCloudService.analyzeConversation(transcript);
+        this.logger.log(`Test conversation analysis completed`);
+      }
+    } catch (analysisError) {
+      this.logger.error(`Failed to analyze test conversation:`, analysisError);
+      // Continue even if analysis fails
+    }
+
+    // Create test conversation record
+    const conversation = await this.conversationModel.create({
+      callId: `test-${Date.now()}-${agentId.toString()}`,
+      companyId,
+      agentId,
+      phoneNumber: 'test-user', // Test conversation identifier
+      callerType: 'ai_agent', // AI agent handled the call
+      direction: 'inbound',
+      status: 'completed',
+      startedAt: new Date(),
+      answeredAt: new Date(),
+      endedAt: new Date(),
+      duration: 0, // Test conversation
+      transcript,
+      aiAnalysis,
+      audioUrl: null,
+      leadId: null, // No lead for test
+      metadata: {
+        isTest: true,
+        testDate: new Date(),
+      },
+    });
+
+    return conversation;
   }
 }

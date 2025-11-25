@@ -15,7 +15,15 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { AgentService } from './agent.service';
-import { CreateAgentDto, UpdateAgentDto, PreviewVoiceDto } from './dto';
+import {
+  CreateAgentDto,
+  UpdateAgentDto,
+  PreviewVoiceDto,
+  TestTranscribeDto,
+  TestChatDto,
+  TestSynthesizeDto,
+  SaveTestConversationDto,
+} from './dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -47,6 +55,17 @@ export class AgentController {
       : req.user.userId;
 
     return this.agentService.createAgent(companyId, createDto, userId);
+  }
+
+  /**
+   * Get available Gemini Live voices
+   * Accessible by: COMPANY_ADMIN, MANAGER
+   */
+  @Get('voices')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async getAvailableVoices() {
+    return this.agentService.getAvailableVoices();
   }
 
   /**
@@ -275,7 +294,158 @@ export class AgentController {
     res.setHeader('Content-Type', 'application/json');
     res.send({
       audio: audioBuffer.toString('base64'),
-      contentType: 'audio/wav',
+      contentType: 'audio/mpeg',
     });
+  }
+
+  /**
+   * Test agent - Transcribe audio (STT)
+   * Accessible by: COMPANY_ADMIN, MANAGER
+   */
+  @Post(':id/test/transcribe')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async testTranscribe(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() testTranscribeDto: TestTranscribeDto,
+  ) {
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
+    const agentId = new Types.ObjectId(id);
+
+    // Get agent to verify access and get language
+    const agent = await this.agentService.getAgentById(agentId, companyId);
+
+    // Decode base64 audio
+    const audioBuffer = Buffer.from(testTranscribeDto.audioBase64, 'base64');
+
+    // Transcribe using Google Cloud STT
+    const transcript = await this.googleCloudService.transcribeAudioBuffer(
+      audioBuffer,
+      agent.voiceSettings?.language || 'ru-RU',
+    );
+
+    return {
+      transcript,
+      language: agent.voiceSettings?.language || 'ru-RU',
+    };
+  }
+
+  /**
+   * Test agent - Generate AI response
+   * Accessible by: COMPANY_ADMIN, MANAGER
+   */
+  @Post(':id/test/chat')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async testChat(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() testChatDto: TestChatDto,
+  ) {
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
+    const agentId = new Types.ObjectId(id);
+
+    // Get agent settings
+    const agent = await this.agentService.getAgentById(agentId, companyId);
+
+    // Build conversation context
+    const conversationHistory = testChatDto.conversationHistory || [];
+    const fullHistory = [
+      ...conversationHistory,
+      { role: 'user' as const, content: testChatDto.message },
+    ];
+
+    const conversationContext = fullHistory
+      .map((msg) => `${msg.role === 'user' ? 'Пользователь' : 'Ассистент'}: ${msg.content}`)
+      .join('\n');
+
+    // Generate AI response
+    const aiResponse = await this.googleCloudService.generateAIResponse(
+      conversationContext,
+      agent.aiSettings?.systemPrompt || 'Ты дружелюбный AI ассистент.',
+      agent.aiSettings?.model || 'gemini-2.0-flash-exp',
+      agent.aiSettings?.temperature || 0.7,
+      1024, // Default max tokens for Gemini Live
+    );
+
+    return {
+      response: aiResponse,
+      conversationHistory: [
+        ...fullHistory,
+        { role: 'assistant' as const, content: aiResponse },
+      ],
+    };
+  }
+
+  /**
+   * Test agent - Synthesize speech (TTS)
+   * Accessible by: COMPANY_ADMIN, MANAGER
+   */
+  @Post(':id/test/synthesize')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.OK)
+  async testSynthesize(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() testSynthesizeDto: TestSynthesizeDto,
+    @Res() res: Response,
+  ) {
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
+    const agentId = new Types.ObjectId(id);
+
+    // Get agent voice settings
+    const agent = await this.agentService.getAgentById(agentId, companyId);
+
+    // Generate TTS audio
+    const audioBuffer = await this.googleCloudService.synthesizeSpeech(
+      testSynthesizeDto.text,
+      agent.voiceSettings?.voiceName || 'ru-RU-Wavenet-B',
+      agent.voiceSettings?.language || 'ru-RU',
+      agent.voiceSettings?.speakingRate || 1.0,
+      agent.voiceSettings?.pitch || 0.0,
+    );
+
+    // Return audio as base64
+    res.setHeader('Content-Type', 'application/json');
+    res.send({
+      audio: audioBuffer.toString('base64'),
+      contentType: 'audio/mpeg',
+    });
+  }
+
+  /**
+   * Save test conversation
+   * Accessible by: COMPANY_ADMIN, MANAGER
+   */
+  @Post(':id/test/conversation')
+  @Roles(UserRole.COMPANY_ADMIN, UserRole.MANAGER)
+  @HttpCode(HttpStatus.CREATED)
+  async saveTestConversation(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() saveTestConversationDto: SaveTestConversationDto,
+  ) {
+    const companyId = Types.ObjectId.isValid(req.user.companyId)
+      ? new Types.ObjectId(req.user.companyId)
+      : req.user.companyId;
+    const agentId = new Types.ObjectId(id);
+    const userId = Types.ObjectId.isValid(req.user.userId)
+      ? new Types.ObjectId(req.user.userId)
+      : req.user.userId;
+
+    // Save as a conversation record for history
+    return this.agentService.saveTestConversation(
+      agentId,
+      companyId,
+      userId,
+      saveTestConversationDto.conversationHistory,
+    );
   }
 }

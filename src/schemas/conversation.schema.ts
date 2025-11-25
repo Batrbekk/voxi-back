@@ -37,6 +37,27 @@ export interface TranscriptSegment {
   confidence: number;
 }
 
+export enum CallOutcome {
+  AGREED_TO_BUY = 'agreed_to_buy',
+  REJECTED = 'rejected',
+  NEEDS_FOLLOWUP = 'needs_followup',
+  THINKING = 'thinking',
+  NOT_INTERESTED = 'not_interested',
+  INFORMATION_PROVIDED = 'information_provided',
+  OTHER = 'other',
+}
+
+export interface ExtractedCustomerData {
+  name?: string;
+  email?: string;
+  phone?: string;
+  budget?: string;
+  preferences?: string[];
+  specialRequirements?: string;
+  bestTimeToCall?: string;
+  additionalInfo?: Record<string, any>;
+}
+
 export interface AIAnalysis {
   summary: string;
   sentiment: SentimentType;
@@ -44,6 +65,13 @@ export interface AIAnalysis {
   customerIntention?: string;
   nextSteps: string[];
   recommendedAction?: LeadAction;
+
+  // Enhanced fields for detailed analysis
+  callOutcome?: CallOutcome;
+  extractedCustomerData?: ExtractedCustomerData;
+  dealProbability?: number; // 0-100
+  conversationQuality?: number; // 0-10
+  concerns?: string[]; // Customer concerns or objections
 }
 
 @Schema({ timestamps: true })

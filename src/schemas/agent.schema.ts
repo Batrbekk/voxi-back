@@ -4,32 +4,37 @@ import { Document, Types } from 'mongoose';
 export type AgentDocument = Agent & Document;
 
 export enum AgentLanguage {
-  RU_RU = 'ru-RU',
-  EN_US = 'en-US',
-  KK_KZ = 'kk-KZ',
+  RU = 'ru', // Russian
+  EN = 'en', // English
+  KZ = 'kz', // Kazakh
 }
 
-export enum AgentGender {
-  MALE = 'male',
-  FEMALE = 'female',
-  NEUTRAL = 'neutral',
+// Gemini Live voice options
+export enum GeminiLiveVoice {
+  // English voices
+  PUCK = 'Puck', // Friendly, conversational
+  CHARON = 'Charon', // Calm, professional
+  KORE = 'Kore', // Warm, engaging
+  FENRIR = 'Fenrir', // Deep, authoritative
+  AOEDE = 'Aoede', // Clear, neutral - works well for Russian
+
+  // Multilingual voices (work best for Russian/Kazakh)
+  ORBIT = 'Orbit', // Versatile, clear
+  VALE = 'Vale', // Natural, expressive
 }
 
 export interface VoiceSettings {
-  voiceName: string; // Google TTS voice name (e.g., 'ru-RU-Wavenet-A')
+  voiceName: GeminiLiveVoice; // Gemini Live voice
   language: AgentLanguage;
-  gender: AgentGender;
-  speakingRate: number; // 0.25 to 4.0, default 1.0
-  pitch: number; // -20.0 to 20.0, default 0.0
-  volumeGainDb: number; // -96.0 to 16.0, default 0.0
+  speakingRate?: number; // 0.5 to 2.0, default 1.0
+  pitch?: number; // -10.0 to 10.0, default 0.0 (if supported)
 }
 
 export interface AISettings {
-  model: string; // e.g., 'gemini-2.0-flash-001'
+  model: string; // 'gemini-2.0-flash-exp' for Gemini Live
   systemPrompt: string;
-  temperature: number; // 0.0 to 1.0
-  maxTokens: number;
-  integratedWithAi: boolean;
+  temperature: number; // 0.0 to 1.0, default 0.7
+  responseModalities?: ('AUDIO' | 'TEXT')[]; // Audio and/or text responses
 }
 
 export interface WorkingHours {

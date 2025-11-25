@@ -164,7 +164,7 @@ export class AIConversationService extends EventEmitter {
         systemPrompt,
         session.agent.aiSettings?.model || 'gemini-2.0-flash-exp',
         session.agent.aiSettings?.temperature || 0.7,
-        session.agent.aiSettings?.maxTokens || 1024,
+        1024, // Default max tokens for Gemini Live
       );
 
       // Add AI response to history
@@ -307,14 +307,29 @@ export class AIConversationService extends EventEmitter {
         this.logger.warn(`Failed to stop audio fork for call ${callId}:`, error);
       }
 
-      // Process any remaining audio buffer
+      // Process and upload audio recording
+      let audioUrl: string | null = null;
       if (session.audioBuffer.length > 0) {
-        const fullAudio = Buffer.concat(session.audioBuffer);
-        // TODO: Final transcription if needed
+        try {
+          const fullAudio = Buffer.concat(session.audioBuffer);
+          this.logger.log(`Uploading audio recording for call ${callId}, size: ${fullAudio.length} bytes`);
+
+          // Upload to Google Cloud Storage
+          audioUrl = await this.googleCloudService.uploadAudioFile(
+            fullAudio,
+            `${callId}-ai-agent.webm`,
+            'audio/webm',
+          );
+
+          this.logger.log(`Audio recording uploaded for call ${callId}: ${audioUrl}`);
+        } catch (uploadError) {
+          this.logger.error(`Failed to upload audio for call ${callId}:`, uploadError);
+          // Continue even if upload fails
+        }
       }
 
       // Save conversation history to database
-      await this.saveConversationHistory(session);
+      await this.saveConversationHistory(session, audioUrl);
 
       this.activeSessions.delete(callId);
 
@@ -327,23 +342,42 @@ export class AIConversationService extends EventEmitter {
   /**
    * Save conversation history to database
    */
-  private async saveConversationHistory(session: AIConversationSession): Promise<void> {
+  private async saveConversationHistory(session: AIConversationSession, audioUrl?: string | null): Promise<void> {
     try {
       const transcript = session.conversationHistory
         .map((msg) => `${msg.role === 'user' ? 'Пользователь' : 'Ассистент'}: ${msg.content}`)
         .join('\n\n');
 
+      // Analyze conversation using Gemini AI
+      let aiAnalysis: any = null;
+      try {
+        if (transcript && transcript.trim().length > 50) {
+          this.logger.log(`Analyzing conversation for call ${session.callId}`);
+          aiAnalysis = await this.googleCloudService.analyzeConversation(transcript);
+          this.logger.log(`Conversation analysis completed for call ${session.callId}`);
+        }
+      } catch (analysisError) {
+        this.logger.error(`Failed to analyze conversation for call ${session.callId}:`, analysisError);
+        // Continue even if analysis fails
+      }
+
+      const updateData: any = {
+        transcript,
+        aiAnalysis,
+        updatedAt: new Date(),
+      };
+
+      // Add audio URL if provided
+      if (audioUrl) {
+        updateData.audioUrl = audioUrl;
+      }
+
       await this.conversationModel.updateOne(
         { callId: session.callId },
-        {
-          $set: {
-            transcript,
-            updatedAt: new Date(),
-          },
-        },
+        { $set: updateData },
       );
 
-      this.logger.log(`Saved conversation history for call ${session.callId}`);
+      this.logger.log(`Saved conversation history, analysis${audioUrl ? ', and audio' : ''} for call ${session.callId}`);
     } catch (error) {
       this.logger.error(`Failed to save conversation history for call ${session.callId}:`, error);
     }

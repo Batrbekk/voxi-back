@@ -1,0 +1,16 @@
+node_modules
+dist
+npm-debug.log
+.git
+.gitignore
+.env
+.env.*
+*.md
+.DS_Store
+coverage
+.vscode
+.idea
+test
+*.test.ts
+*.spec.ts
+google-cloud-sdk

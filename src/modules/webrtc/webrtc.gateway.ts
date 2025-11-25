@@ -17,9 +17,11 @@ import { ConversationService } from '../conversation/conversation.service';
 import { GoogleCloudService } from '../google-cloud/google-cloud.service';
 import { AIConversationService } from '../ai-conversation/ai-conversation.service';
 import { MediaService } from '../media/media.service';
+import { SipGeminiBridge } from '../gemini-live/sip-gemini-bridge.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CallDirection, CallerType, CallStatus } from '../../schemas/conversation.schema';
 import { Agent } from '../../schemas/agent.schema';
+import { KnowledgeBase } from '../../schemas/knowledge-base.schema';
 
 interface CallData {
   phoneNumber: string;
@@ -51,6 +53,7 @@ export class WebRtcGateway
 
   private readonly logger = new Logger(WebRtcGateway.name);
   private managerSessions: Map<string, ManagerSession> = new Map();
+  private activeBridges: Map<string, SipGeminiBridge> = new Map();
 
   constructor(
     private sipService: SipService,
@@ -58,7 +61,9 @@ export class WebRtcGateway
     private googleCloudService: GoogleCloudService,
     private aiConversationService: AIConversationService,
     private mediaService: MediaService,
+    private sipGeminiBridge: SipGeminiBridge,
     @InjectModel('Agent') private agentModel: Model<Agent>,
+    @InjectModel('KnowledgeBase') private knowledgeBaseModel: Model<KnowledgeBase>,
   ) {
     // Listen to SIP service events
     this.sipService.on('call:incoming', (data) => {
@@ -300,38 +305,8 @@ export class WebRtcGateway
       if (agent && req && res) {
         this.logger.log(`Agent ${agent.name} found for phone number ${phoneToCheck}`);
 
-        // Connect call to Freeswitch media server
-        const mediaEndpoint = await this.mediaService.connectCaller(
-          sipSession.callId,
-          req,
-          res,
-        );
-
-        this.logger.log(`Call ${sipSession.callId} connected to Freeswitch, endpoint: ${mediaEndpoint.endpoint.uuid}`);
-
-        // Create conversation with AI agent as caller
-        const conversation = await this.conversationService.createConversation(
-          agent.companyId,
-          {
-            callId: sipSession.callId,
-            phoneNumber: sipSession.phoneNumber,
-            direction: sipSession.direction === 'inbound' ? CallDirection.INBOUND : CallDirection.OUTBOUND,
-            callerType: CallerType.AI_AGENT,
-            agentId: agent._id.toString(),
-            startedAt: sipSession.startedAt?.toISOString() || new Date().toISOString(),
-          },
-        );
-
-        this.logger.log(`Conversation created for AI agent: ${conversation._id}`);
-
-        // Start AI conversation session
-        await this.aiConversationService.startSession(
-          sipSession.callId,
-          agent._id.toString(),
-          sipSession.direction === 'inbound' ? 'inbound' : 'outbound',
-        );
-
-        this.logger.log(`AI conversation session started for call ${sipSession.callId}`);
+        // Always use Gemini Live for natural conversations
+        await this.handleGeminiLiveCall(sipSession, req, res, agent);
       } else {
         this.logger.log(`No agent found for phone number ${phoneToCheck}, notifying managers`);
 
@@ -359,6 +334,20 @@ export class WebRtcGateway
    */
   private async handleCallEnded(sipSession: any) {
     this.logger.log(`Call ended: ${sipSession.callId}`);
+
+    // Check if there's an active Gemini Live bridge and end it
+    const bridge = this.activeBridges.get(sipSession.callId);
+    if (bridge) {
+      try {
+        await bridge.stop();
+        this.activeBridges.delete(sipSession.callId);
+        this.logger.log(`Gemini Live bridge stopped for call ${sipSession.callId}`);
+        // Bridge will emit 'bridgeEnded' event which handles conversation saving
+        return; // Exit early as bridge handles saving
+      } catch (error) {
+        this.logger.error(`Failed to stop Gemini Live bridge for call ${sipSession.callId}:`, error);
+      }
+    }
 
     // Check if there's an active AI session and end it
     if (this.aiConversationService.isSessionActive(sipSession.callId)) {
@@ -426,6 +415,159 @@ export class WebRtcGateway
 
         break;
       }
+    }
+  }
+
+  /**
+   * Handle incoming call with Gemini Live API for natural conversations
+   */
+  private async handleGeminiLiveCall(
+    sipSession: any,
+    req: any,
+    res: any,
+    agent: any,
+  ): Promise<void> {
+    try {
+      this.logger.log(`Starting Gemini Live session for call ${sipSession.callId}`);
+
+      // Get knowledge base if configured
+      let knowledgeBase: any = null;
+      if (agent.knowledgeBaseId) {
+        knowledgeBase = await this.knowledgeBaseModel.findById(agent.knowledgeBaseId).lean();
+      }
+
+      // Connect call to Freeswitch to get media endpoint
+      const mediaEndpoint = await this.mediaService.connectCaller(
+        sipSession.callId,
+        req,
+        res,
+      );
+
+      this.logger.log(`Call ${sipSession.callId} connected to Freeswitch for Gemini Live`);
+
+      // Use the injected bridge service (we'll need to clone/create instances differently)
+      // For now, use the injected instance (in production, might need a factory)
+      const bridge = this.sipGeminiBridge;
+
+      // Prepare configuration for Gemini Live
+      const config = {
+        sipCallId: sipSession.callId,
+        phoneNumber: sipSession.phoneNumber,
+        direction: sipSession.direction,
+        agentId: agent._id.toString(),
+        systemPrompt: agent.aiSettings?.systemPrompt || 'You are a helpful AI assistant.',
+        voiceSettings: agent.voiceSettings || {
+          voiceName: 'Aoede', // Default Russian-friendly voice
+          language: 'ru',
+          speakingRate: 1.0,
+          pitch: 0,
+        },
+        greetingMessages: {
+          inbound: agent.inboundGreetingMessage,
+          outbound: agent.outboundGreetingMessage,
+          fallback: agent.fallbackMessage,
+          ending: agent.endingMessage,
+        },
+        knowledgeBase: knowledgeBase ? {
+          name: knowledgeBase.name,
+          documents: knowledgeBase.documents,
+          metadata: knowledgeBase.metadata,
+        } : null,
+        temperature: agent.aiSettings?.temperature || 0.7,
+      };
+
+      // Set up bridge event handlers
+      bridge.on('transcript', (data) => {
+        this.logger.debug(`Transcript: ${data.text}`);
+      });
+
+      bridge.on('bridgeEnded', async (data) => {
+        this.logger.log(`Gemini Live bridge ended for call ${sipSession.callId}`);
+
+        try {
+          // Process the conversation data
+          const transcript = data.transcriptSegments
+            .map((seg: any) => `${seg.role === 'user' ? 'Пользователь' : 'Ассистент'}: ${seg.text}`)
+            .join('\n\n');
+
+          // Upload audio recording to Google Cloud Storage
+          let audioUrl: string | null = null;
+          if (data.recordingBuffer && data.recordingBuffer.length > 0) {
+            audioUrl = await this.googleCloudService.uploadAudioFile(
+              data.recordingBuffer,
+              `${sipSession.callId}.pcm`,
+              'audio/pcm',
+            );
+          }
+
+          // Analyze conversation
+          const analysis = await this.googleCloudService.analyzeConversation(transcript);
+
+          // Create conversation record (first create with basic info)
+          const conversation = await this.conversationService.createConversation(
+            agent.companyId,
+            {
+              callId: sipSession.callId,
+              phoneNumber: sipSession.phoneNumber,
+              direction: sipSession.direction === 'inbound' ? CallDirection.INBOUND : CallDirection.OUTBOUND,
+              callerType: CallerType.AI_AGENT,
+              agentId: agent._id.toString(),
+              startedAt: sipSession.startedAt?.toISOString() || new Date().toISOString(),
+            },
+          );
+
+          // Then update with complete data
+          await this.conversationService.updateConversation(
+            conversation._id as any,
+            agent._id.toString() as any,
+            {
+              status: CallStatus.COMPLETED,
+              endedAt: new Date().toISOString(),
+              duration: data.duration,
+              audioUrl: audioUrl || undefined,
+              transcript,
+              aiAnalysis: analysis,
+              metadata: {
+                isGeminiLive: true,
+                transcriptSegments: data.transcriptSegments.length,
+              },
+            },
+          );
+
+          this.logger.log(`Conversation saved for Gemini Live call ${sipSession.callId}`);
+        } catch (error) {
+          this.logger.error(`Failed to save Gemini Live conversation:`, error);
+        }
+
+        // Remove from active bridges
+        this.activeBridges.delete(sipSession.callId);
+      });
+
+      bridge.on('error', (error) => {
+        this.logger.error(`Gemini Live bridge error for call ${sipSession.callId}:`, error);
+        this.activeBridges.delete(sipSession.callId);
+      });
+
+      // Start the bridge
+      await bridge.start(mediaEndpoint.endpoint, config);
+
+      // Store the bridge for later cleanup
+      this.activeBridges.set(sipSession.callId, bridge);
+
+      this.logger.log(`Gemini Live session active for call ${sipSession.callId}`);
+
+    } catch (error) {
+      this.logger.error(`Failed to start Gemini Live session for call ${sipSession.callId}:`, error);
+
+      // Fall back to traditional AI conversation if Gemini Live fails
+      this.logger.log(`Falling back to traditional AI conversation for call ${sipSession.callId}`);
+
+      // Start traditional AI conversation session as fallback
+      await this.aiConversationService.startSession(
+        sipSession.callId,
+        agent._id.toString(),
+        sipSession.direction === 'inbound' ? 'inbound' : 'outbound',
+      );
     }
   }
 
