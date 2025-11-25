@@ -121,4 +121,8 @@ export class CreateAgentDto {
   @IsString({ each: true })
   @IsOptional()
   phoneNumbers?: string[];
+
+  @IsString()
+  @IsOptional()
+  knowledgeBaseId?: string;
 }
