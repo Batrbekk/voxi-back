@@ -403,11 +403,33 @@ export class AgentController {
     // Get agent voice settings
     const agent = await this.agentService.getAgentById(agentId, companyId);
 
+    // Gemini Live voices (not supported by Google TTS)
+    const geminiVoices = ['Aoede', 'Orbit', 'Vale', 'Puck', 'Charon', 'Kore', 'Fenrir'];
+    const isGeminiVoice = geminiVoices.includes(agent.voiceSettings?.voiceName);
+
+    // Convert short language code to BCP-47 format
+    const languageMap = {
+      'ru': 'ru-RU',
+      'en': 'en-US',
+      'kz': 'kk-KZ',
+    };
+    const language = languageMap[agent.voiceSettings?.language] || agent.voiceSettings?.language || 'ru-RU';
+
+    // Use appropriate voice for Google TTS
+    const defaultVoices = {
+      'ru-RU': 'ru-RU-Wavenet-B',
+      'en-US': 'en-US-Wavenet-D',
+      'kk-KZ': 'kk-KZ-Wavenet-A',
+    };
+    const voiceName = isGeminiVoice
+      ? (defaultVoices[language] || 'ru-RU-Wavenet-B')
+      : (agent.voiceSettings?.voiceName || 'ru-RU-Wavenet-B');
+
     // Generate TTS audio
     const audioBuffer = await this.googleCloudService.synthesizeSpeech(
       testSynthesizeDto.text,
-      agent.voiceSettings?.voiceName || 'ru-RU-Wavenet-B',
-      agent.voiceSettings?.language || 'ru-RU',
+      voiceName,
+      language,
       agent.voiceSettings?.speakingRate || 1.0,
       agent.voiceSettings?.pitch || 0.0,
     );
